@@ -2,7 +2,11 @@
 .env
 .env.local
 deployments/helm/flight-tracker/values-local.yaml
-deployments/helm/flight-tracker/values-demo.yaml
+# values-demo.yaml is intentionally committed (not ignored) — this is a
+# throwaway demo bot, not a product, so the real Telegram token/DB
+# passwords inside it are committed on purpose so anyone can clone and
+# `./deploy-demo.sh` without extra setup. Rotate the token via @BotFather
+# if this ever needs to stop being public.
 
 # Build artifacts
 bin/

@@ -1,0 +1,90 @@
+# Public-registry demo overlay. Same deployment shape as values-local.yaml,
+# but images are pulled from Docker Hub (docker.io/quyennm3/<service>:demo)
+# instead of the local Docker image store, so any machine with internet
+# access can run the stack via ./deploy-demo.sh with no local build step.
+#
+# NOTE: this file is committed with real credentials (Telegram bot token,
+# DB/broker passwords) on purpose — this is a disposable demo bot, not a
+# product, so we're trading secret hygiene for "clone and run" simplicity.
+# If that stops being true, rotate the bot token via @BotFather and move
+# this back to .gitignore (see values-local.yaml.example for the pattern).
+#
+# To rebuild + push new images from the repo root:
+#   docker build -f services/<service>/Dockerfile -t quyennm3/<service>:demo .
+#   docker push quyennm3/<service>:demo
+
+_demoImage: &demoImage
+  registry: quyennm3
+  tag: demo
+  pullPolicy: Always
+
+postgresql:
+  auth:
+    postgresPassword: "postgres"
+
+rabbitmq:
+  auth:
+    password: "guest"
+
+bot-service:
+  image:
+    <<: *demoImage
+    repository: bot-service
+  replicaCount: 1
+  autoscaling:
+    enabled: false
+  ingress:
+    enabled: false
+  secrets:
+    BOT_TELEGRAM_BOT_TOKEN: "8836193667:AAGU-yIKM9T3nNqPSJlg53sOdsGZpFFrcqU"
+    BOT_TELEGRAM_WEBHOOK_SECRET: "dcef2c38c9d92fdbce869e263a6efce83133435a335f21fb"
+    BOT_TELEGRAM_WEBHOOK_PATH_SECRET: "b62c4ef3ffb9a8d5b465048a21ca5e46b94ad6f1515486d0"
+  # cloudflared quick tunnel + auto webhook registration — see
+  # templates/tunnel-registrar-configmap.yaml. Takes ~5-10 min after each
+  # pod (re)start to converge: Telegram's own DNS resolver is slow to pick
+  # up a freshly-minted trycloudflare.com hostname, so setWebhook fails
+  # (logged) until it does; the registrar retries every 5s until it
+  # succeeds (logged) — no manual intervention needed, just patience.
+  extraVolumes:
+    - name: tunnel-log
+      emptyDir: {}
+    - name: registrar-script
+      configMap:
+        name: bot-service-tunnel-registrar
+        defaultMode: 0755
+  extraContainers:
+    - name: cloudflared
+      image: cloudflare/cloudflared:latest
+      args: ["tunnel", "--url", "http://localhost:8080", "--logfile", "/shared/cloudflared.log", "--loglevel", "info"]
+      volumeMounts:
+        - name: tunnel-log
+          mountPath: /shared
+    - name: webhook-registrar
+      image: curlimages/curl:8.11.0
+      command: ["sh", "/scripts/register-webhook.sh"]
+      volumeMounts:
+        - name: tunnel-log
+          mountPath: /shared
+        - name: registrar-script
+          mountPath: /scripts
+      envFrom:
+        - secretRef:
+            name: bot-service
+
+flight-service:
+  image:
+    <<: *demoImage
+    repository: flight-service
+  replicaCount: 1
+  autoscaling:
+    enabled: false
+  secrets:
+    FLIGHT_DB_PASSWORD: "postgres"
+
+sync-service:
+  image:
+    <<: *demoImage
+    repository: sync-service
+  secrets:
+    SYNC_DB_PASSWORD: "postgres"
+    SYNC_RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/"
