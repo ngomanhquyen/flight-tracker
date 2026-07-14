@@ -11,6 +11,7 @@ bin/
 
 # Local dev script output (see services/*/scripts/)
 logs/
+*.log
 deployments/helm/flight-tracker/charts/*/charts/
 deployments/helm/flight-tracker/charts/*.tgz
 deployments/helm/flight-tracker/charts/*/Chart.lock
