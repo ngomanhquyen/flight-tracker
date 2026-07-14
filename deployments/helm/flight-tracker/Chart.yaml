@@ -1,0 +1,44 @@
+apiVersion: v2
+name: flight-tracker
+description: Flight Tracker Bot — umbrella chart for all microservices
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+dependencies:
+  - name: bot-service
+    version: "0.1.0"
+    repository: "file://charts/bot-service"
+  - name: flight-service
+    version: "0.1.0"
+    repository: "file://charts/flight-service"
+  - name: subscription-service
+    version: "0.1.0"
+    repository: "file://charts/subscription-service"
+  - name: sync-service
+    version: "0.1.0"
+    repository: "file://charts/sync-service"
+  - name: notification-service
+    version: "0.1.0"
+    repository: "file://charts/notification-service"
+  # Declared here too (in addition to each service subchart's own
+  # dependency on it) purely so `charts/common` sitting alongside the
+  # service subchart directories doesn't trip Helm's "chart present but
+  # undeclared" check. It renders nothing on its own (type: library).
+  - name: common
+    version: "0.1.0"
+    repository: "file://charts/common"
+  # Dev/staging convenience only — disabled via values-prod.yaml (set
+  # postgresql.enabled/redis.enabled/rabbitmq.enabled: false there) in favor
+  # of managed services, per docs/deployment/helm-structure.md.
+  - name: postgresql
+    version: "18.7.13"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: postgresql.enabled
+  - name: redis
+    version: "27.0.15"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: redis.enabled
+  - name: rabbitmq
+    version: "16.0.14"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: rabbitmq.enabled

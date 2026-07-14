@@ -1,0 +1,41 @@
+# Local dev infrastructure only (mirrors the Bitnami postgresql/rabbitmq/redis
+# dependencies the Helm umbrella chart bundles for dev/staging — see
+# docs/deployment/helm-structure.md). Not used in any deployed environment.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: flight_tracker
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./docs/database/sync-service.sql:/docker-entrypoint-initdb.d/01-sync-service.sql:ro
+      - ./docs/database/flight-service.sql:/docker-entrypoint-initdb.d/02-flight-service.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10

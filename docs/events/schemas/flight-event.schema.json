@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://flight-tracker/schemas/flight-event.schema.json",
+  "title": "FlightEvent",
+  "type": "object",
+  "required": ["event_id", "event_type", "version", "occurred_at", "flight", "metadata"],
+  "additionalProperties": false,
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique per publish attempt; used by consumers for idempotency dedupe."
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "FlightCreated",
+        "FlightUpdated",
+        "FlightDelayed",
+        "FlightBoarding",
+        "FlightDeparted",
+        "FlightLanded",
+        "FlightCancelled"
+      ]
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$",
+      "example": "1.0"
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "correlation_id": {
+      "type": "string",
+      "description": "Identifies the sync-service run that produced this event."
+    },
+    "flight": {
+      "type": "object",
+      "required": [
+        "flight_number", "airline_iata", "origin_iata", "destination_iata",
+        "scheduled_departure", "scheduled_arrival", "status"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "flight_number": { "type": "string", "example": "VN257" },
+        "airline_iata": { "type": "string", "example": "VN" },
+        "origin_iata": { "type": "string", "minLength": 3, "maxLength": 3 },
+        "destination_iata": { "type": "string", "minLength": 3, "maxLength": 3 },
+        "scheduled_departure": { "type": "string", "format": "date-time" },
+        "estimated_departure": { "type": ["string", "null"], "format": "date-time" },
+        "actual_departure": { "type": ["string", "null"], "format": "date-time" },
+        "scheduled_arrival": { "type": "string", "format": "date-time" },
+        "estimated_arrival": { "type": ["string", "null"], "format": "date-time" },
+        "actual_arrival": { "type": ["string", "null"], "format": "date-time" },
+        "gate": { "type": ["string", "null"] },
+        "terminal": { "type": ["string", "null"] },
+        "status": {
+          "type": "string",
+          "enum": ["SCHEDULED", "BOARDING", "DELAYED", "DEPARTED", "LANDED", "CANCELLED"]
+        },
+        "previous_status": {
+          "type": ["string", "null"],
+          "enum": ["SCHEDULED", "BOARDING", "DELAYED", "DEPARTED", "LANDED", "CANCELLED", null]
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["source"],
+      "additionalProperties": true,
+      "properties": {
+        "source": { "type": "string", "example": "sync-service" },
+        "provider": { "type": "string", "description": "upstream public flight API identifier" }
+      }
+    }
+  }
+}

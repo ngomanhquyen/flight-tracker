@@ -1,0 +1,188 @@
+openapi: 3.0.3
+info:
+  title: subscription-service API
+  version: "1.0"
+  description: >
+    System of record for Telegram chats and their subscriptions.
+    `/api/v1` is consumed by bot-service. `/internal/v1` is consumed only by
+    notification-service and is blocked at the NetworkPolicy layer from
+    anything else.
+servers:
+  - url: http://subscription-service.flight-tracker.svc.cluster.local
+paths:
+  /api/v1/chats:
+    post:
+      summary: Upsert a Telegram chat (called on /start and on any inbound message)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpsertChatRequest" }
+      responses:
+        "200":
+          description: Chat upserted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChatResponse" }
+
+  /api/v1/subscriptions:
+    post:
+      summary: Create a subscription (flight or route) for a chat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSubscriptionRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SubscriptionResponse" }
+        "409":
+          description: Duplicate subscription
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    get:
+      summary: List subscriptions for a chat
+      parameters:
+        - name: telegram_chat_id
+          in: query
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: List of subscriptions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/SubscriptionResponse" }
+
+  /api/v1/subscriptions/{id}:
+    delete:
+      summary: Unsubscribe (soft delete)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: telegram_chat_id
+          in: query
+          required: true
+          description: Ownership check — a chat may only delete its own subscription
+          schema: { type: integer, format: int64 }
+      responses:
+        "204": { description: Deleted }
+        "404": { description: Not found or not owned by this chat }
+
+  /internal/v1/subscriptions/match:
+    get:
+      summary: >
+        Resolve subscribers for a flight event. Matches active `flight`
+        subscriptions by flight_number and active `route` subscriptions by
+        origin+destination.
+      parameters:
+        - name: flight_number
+          in: query
+          required: true
+          schema: { type: string }
+        - name: origin_iata
+          in: query
+          required: true
+          schema: { type: string }
+        - name: destination_iata
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Matching chats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  chat_ids:
+                    type: array
+                    items: { type: integer, format: int64 }
+
+  /health:
+    get:
+      summary: Liveness probe
+      responses: { "200": { description: OK } }
+  /ready:
+    get:
+      summary: Readiness probe (checks DB connectivity)
+      responses:
+        "200": { description: Ready }
+        "503": { description: Not ready }
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      responses: { "200": { description: OK } }
+
+components:
+  schemas:
+    SubscriptionType:
+      type: string
+      enum: [flight, route]
+
+    UpsertChatRequest:
+      type: object
+      required: [telegram_chat_id]
+      properties:
+        telegram_chat_id: { type: integer, format: int64 }
+        username: { type: string, nullable: true }
+        first_name: { type: string, nullable: true }
+        language_code: { type: string, nullable: true }
+
+    ChatResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        telegram_chat_id: { type: integer, format: int64 }
+        username: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    CreateSubscriptionRequest:
+      type: object
+      required: [telegram_chat_id, type]
+      properties:
+        telegram_chat_id: { type: integer, format: int64 }
+        type: { $ref: "#/components/schemas/SubscriptionType" }
+        flight_number:
+          type: string
+          nullable: true
+          description: required when type=flight
+        origin_iata:
+          type: string
+          nullable: true
+          description: required when type=route
+        destination_iata:
+          type: string
+          nullable: true
+          description: required when type=route
+
+    SubscriptionResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        telegram_chat_id: { type: integer, format: int64 }
+        type: { $ref: "#/components/schemas/SubscriptionType" }
+        flight_number: { type: string, nullable: true }
+        origin_iata: { type: string, nullable: true }
+        destination_iata: { type: string, nullable: true }
+        active: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    ErrorResponse:
+      type: object
+      properties:
+        code: { type: string, example: "DUPLICATE_SUBSCRIPTION" }
+        message: { type: string }
+        correlation_id: { type: string }

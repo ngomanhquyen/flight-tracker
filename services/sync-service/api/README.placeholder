@@ -1,0 +1,6 @@
+This service's published OpenAPI/Swagger spec lives here (e.g. openapi.yaml),
+generated from or kept in sync with docs/api-contracts/ at the repo root and
+served at /swagger for local exploration. Distinct from internal/api, which
+holds internal DTO/wire-type structs used by handlers — that package is not
+part of the public contract.
+Populated in Step 2+ alongside the service's source code.

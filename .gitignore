@@ -1,0 +1,20 @@
+# Local secrets — never commit real env files, only .env.example
+.env
+.env.local
+deployments/helm/flight-tracker/values-local.yaml
+deployments/helm/flight-tracker/values-demo.yaml
+
+# Build artifacts
+bin/
+*.exe
+*.test
+
+# Local dev script output (see services/*/scripts/)
+logs/
+deployments/helm/flight-tracker/charts/*/charts/
+deployments/helm/flight-tracker/charts/*.tgz
+deployments/helm/flight-tracker/charts/*/Chart.lock
+deployments/helm/flight-tracker/Chart.lock
+
+# Go
+go.work.sum

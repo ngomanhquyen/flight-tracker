@@ -1,0 +1,60 @@
+# sync-service is a Kubernetes CronJob, not a Deployment — no replicaCount/HPA.
+
+image:
+  registry: ghcr.io/example-org/flight-tracker
+  repository: sync-service
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+cronjob:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid    # never overlap two poll runs
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  activeDeadlineSeconds: 240   # kill a run that overruns the 5-minute cadence
+  backoffLimit: 2
+
+resources:
+  requests: { cpu: 200m, memory: 192Mi }
+  limits: { cpu: 1, memory: 384Mi }
+
+# Plain (non-secret) settings — env var names match internal/config/config.go
+# (prefix SYNC_, dots -> underscores).
+env:
+  SYNC_ENVIRONMENT: "local"
+  SYNC_HTTP_PORT: "8080"
+  SYNC_DB_HOST: "postgresql"
+  SYNC_DB_PORT: "5432"
+  SYNC_DB_USER: "postgres"
+  SYNC_DB_NAME: "flight_tracker"
+  SYNC_DB_SSLMODE: "disable"
+  SYNC_RABBITMQ_EXCHANGE: "flight.events"
+  SYNC_CLIENTS_FLIGHT_SERVICE_URL: "http://flight-service:8080"
+  SYNC_CLIENTS_TIMEOUT: "5s"
+  # "fake" is the only provider implemented today — see
+  # services/sync-service/internal/repository/fake_provider.go.
+  SYNC_PROVIDER_NAME: "fake"
+
+# Sensitive settings, deliberately left empty here — see common.secret's doc
+# comment. Populate via values-local.yaml (gitignored) for this test
+# deployment, or via External Secrets Operator/Sealed Secrets/SOPS in a
+# real one. SYNC_RABBITMQ_URL carries credentials, so it lives here rather
+# than in env even though it's not a single "password" field.
+secrets:
+  SYNC_DB_PASSWORD: ""
+  SYNC_RABBITMQ_URL: ""
+
+# lightweight metrics/health Service scraped between runs; the Job pod itself
+# also exposes /metrics for the duration of each run.
+service:
+  type: ClusterIP
+  port: 8080
+
+networkPolicy:
+  ingressFrom:
+    - prometheusOnly: true
+  egressTo:
+    - flight-service
+    - rabbitmq
+    - postgresql
+    - external: public-flight-api

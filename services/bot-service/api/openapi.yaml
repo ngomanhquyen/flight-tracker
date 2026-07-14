@@ -1,0 +1,44 @@
+openapi: 3.0.3
+info:
+  title: bot-service API
+  version: "1.0"
+  description: >
+    bot-service exposes no public business REST API — it is a client of
+    flight-service and subscription-service. This spec covers only its own
+    transport surface: the Telegram webhook receiver and standard probes.
+    Full command grammar: ../../../docs/api-contracts/bot-service.md
+paths:
+  /webhook/telegram/{secret}:
+    post:
+      summary: Telegram webhook receiver
+      description: >
+        Requires header X-Telegram-Bot-Api-Secret-Token to match the
+        configured webhook secret, in addition to the path secret, before
+        any update is processed. Always responds 200 immediately and
+        processes the update asynchronously.
+      parameters:
+        - name: secret
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Acknowledged (processing happens asynchronously)
+        "401":
+          description: Missing/invalid X-Telegram-Bot-Api-Secret-Token header
+        "404":
+          description: Path secret does not match
+  /health:
+    get:
+      summary: Liveness probe
+      responses: { "200": { description: OK } }
+  /ready:
+    get:
+      summary: Readiness probe (checks flight-service and subscription-service reachability)
+      responses:
+        "200": { description: Ready }
+        "503": { description: Not ready }
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      responses: { "200": { description: OK } }

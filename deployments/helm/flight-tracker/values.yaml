@@ -1,0 +1,76 @@
+# Global values shared/cascaded across all subcharts.
+# Service-specific overrides live in charts/<service>/values.yaml and are
+# referenced here only when a global default needs overriding per-environment
+# (see values-staging.yaml / values-prod.yaml, added alongside this file).
+
+global:
+  environment: local          # local | dev | staging | prod
+  domain: flight-tracker.local
+
+  # Referenced by name/key only — actual secret values are provisioned by
+  # External Secrets Operator / Sealed Secrets / SOPS, never committed here.
+  secretRefs:
+    telegramBotToken:
+      name: telegram-credentials
+      key: bot-token
+    telegramWebhookSecret:
+      name: telegram-credentials
+      key: webhook-secret
+    postgresPassword:
+      name: postgres-credentials
+      key: password
+    redisPassword:
+      name: redis-credentials
+      key: password
+    rabbitmqPassword:
+      name: rabbitmq-credentials
+      key: password
+    publicFlightApiKey:
+      name: flight-api-credentials
+      key: api-key
+
+# Dev/staging convenience dependencies — an in-cluster data plane so the
+# whole system is deployable with just this chart. Set all three to
+# `enabled: false` in values-prod.yaml and point services at managed
+# instances (RDS/ElastiCache/Amazon MQ) instead. Passwords are deliberately
+# NOT set here — see values-local.yaml.example.
+postgresql:
+  enabled: true
+  fullnameOverride: postgresql   # so the Service is named exactly "postgresql", matching FLIGHT_DB_HOST/SYNC_DB_HOST defaults
+  architecture: standalone
+  auth:
+    database: flight_tracker
+  primary:
+    persistence:
+      enabled: true
+      size: 1Gi
+
+redis:
+  enabled: true
+  fullnameOverride: redis        # Service is named "redis-master", matching FLIGHT_REDIS_ADDR's default
+  architecture: standalone
+  auth:
+    enabled: false                # cache only, no sensitive data — skip auth for this project's scope
+  master:
+    persistence:
+      enabled: false
+
+rabbitmq:
+  enabled: true
+  fullnameOverride: rabbitmq     # Service is named exactly "rabbitmq", matching sync-service's egress/URL config
+  auth:
+    username: guest
+  # This chart version's pinned image tag (4.1.3-debian-12-r1) has been
+  # moved off the free docker.io/bitnami/* registry to docker.io/bitnamilegacy/*
+  # (Bitnami's newer images require a paid "Bitnami Secure Images"
+  # subscription) — postgresql/redis above still resolve fine on the
+  # default registry as of this writing, only rabbitmq needed this override.
+  image:
+    repository: bitnamilegacy/rabbitmq
+
+# Per-service overrides are set under each subchart's own key, e.g.:
+# bot-service:
+#   replicaCount: 2
+# flight-service:
+#   resources:
+#     requests: { cpu: 100m, memory: 128Mi

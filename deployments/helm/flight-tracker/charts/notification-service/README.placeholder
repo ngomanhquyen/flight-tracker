@@ -1,0 +1,4 @@
+Reserved for Step 8: deployment.yaml, service.yaml, configmap.yaml,
+secret.yaml, hpa.yaml, networkpolicy.yaml.
+Each will use {{ include "common.xxx" . }} from ../common/templates/_helpers.tpl.
+See docs/deployment/helm-structure.md for the resource matrix.

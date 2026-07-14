@@ -1,0 +1,8 @@
+apiVersion: v2
+name: common
+description: >
+  Library chart of reusable template snippets (Deployment, Service, HPA,
+  ConfigMap, probes, NetworkPolicy) shared by all flight-tracker service
+  subcharts. Renders no resources on its own.
+type: library
+version: 0.1.0

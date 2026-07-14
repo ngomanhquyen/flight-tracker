@@ -1,0 +1,10 @@
+apiVersion: v2
+name: flight-service
+description: Flight search API with PostgreSQL + Redis cache
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+dependencies:
+  - name: common
+    version: "0.1.0"
+    repository: "file://../common"

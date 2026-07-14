@@ -1,0 +1,57 @@
+replicaCount: 2
+
+image:
+  registry: ghcr.io/example-org/flight-tracker
+  repository: flight-service
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8080
+
+resources:
+  requests: { cpu: 150m, memory: 192Mi }
+  limits: { cpu: 750m, memory: 384Mi }
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 8
+  targetCPUUtilizationPercentage: 70
+
+# Plain (non-secret) settings — env var names match internal/config/config.go
+# (prefix FLIGHT_, dots -> underscores).
+env:
+  FLIGHT_ENVIRONMENT: "local"
+  FLIGHT_HTTP_PORT: "8080"
+  FLIGHT_HTTP_SHUTDOWN_TIMEOUT: "15s"
+  FLIGHT_DB_HOST: "postgresql"
+  FLIGHT_DB_PORT: "5432"
+  FLIGHT_DB_USER: "postgres"
+  FLIGHT_DB_NAME: "flight_tracker"
+  FLIGHT_DB_SSLMODE: "disable"
+  FLIGHT_REDIS_ADDR: "redis-master:6379"
+  FLIGHT_REDIS_DB: "0"
+  FLIGHT_CACHE_TTL: "60s"
+  FLIGHT_SEARCH_MAX_ROUTE_RESULTS: "50"
+
+# Sensitive settings, deliberately left empty here — see common.secret's doc
+# comment. Populate via values-local.yaml (gitignored) for this test
+# deployment, or via External Secrets Operator/Sealed Secrets/SOPS in a
+# real one.
+secrets:
+  FLIGHT_DB_PASSWORD: ""
+  FLIGHT_REDIS_PASSWORD: ""
+
+probes:
+  liveness: { path: /health, initialDelaySeconds: 5, periodSeconds: 10 }
+  readiness: { path: /ready, initialDelaySeconds: 10, periodSeconds: 10 }
+
+networkPolicy:
+  ingressFrom:
+    - bot-service
+    - sync-service
+  egressTo:
+    - postgresql
+    - redis

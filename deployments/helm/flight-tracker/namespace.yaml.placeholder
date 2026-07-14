@@ -1,0 +1,2 @@
+Reserved for Step 8: namespace.yaml + default-deny NetworkPolicy baseline.
+See docs/deployment/helm-structure.md, section "NetworkPolicy default posture".

@@ -1,0 +1,181 @@
+openapi: 3.0.3
+info:
+  title: flight-service API
+  version: "1.0"
+  description: >
+    Flight search and canonical status store. Public endpoints (`/api/v1`) are
+    reachable from other in-cluster services (currently bot-service).
+    Internal endpoints (`/internal/v1`) are reachable only from sync-service
+    and are blocked at the NetworkPolicy layer from anything else.
+servers:
+  - url: http://flight-service.flight-tracker.svc.cluster.local
+paths:
+  /api/v1/flights/{flightNumber}:
+    get:
+      summary: Get the latest known status of a flight by flight number
+      parameters:
+        - name: flightNumber
+          in: path
+          required: true
+          schema: { type: string, example: VN257 }
+        - name: date
+          in: query
+          required: false
+          description: Scheduled departure date (defaults to today, UTC)
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Flight found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FlightResponse" }
+        "404":
+          description: No flight found for that number/date
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /api/v1/flights/route:
+    get:
+      summary: Search flights by origin/destination route
+      parameters:
+        - name: origin
+          in: query
+          required: true
+          schema: { type: string, minLength: 3, maxLength: 3, example: HAN }
+        - name: destination
+          in: query
+          required: true
+          schema: { type: string, minLength: 3, maxLength: 3, example: SGN }
+        - name: date
+          in: query
+          required: false
+          schema: { type: string, format: date }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 10, maximum: 50 }
+      responses:
+        "200":
+          description: Matching flights (may be empty)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/FlightResponse" }
+                  total: { type: integer }
+
+  /internal/v1/flights/ingest:
+    post:
+      summary: >
+        Ingest a normalized flight snapshot from sync-service. Upserts the
+        canonical row and returns the previous/new status so the caller can
+        decide which domain event(s) to publish. This is the only write path
+        into the flight schema.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IngestRequest" }
+      responses:
+        "200":
+          description: Ingested
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IngestResponse" }
+        "400":
+          description: Invalid snapshot
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /health:
+    get:
+      summary: Liveness probe
+      responses: { "200": { description: OK } }
+  /ready:
+    get:
+      summary: Readiness probe (checks DB + Redis connectivity)
+      responses:
+        "200": { description: Ready }
+        "503": { description: Not ready }
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      responses: { "200": { description: OK } }
+
+components:
+  schemas:
+    FlightStatus:
+      type: string
+      enum:
+        - SCHEDULED
+        - BOARDING
+        - DELAYED
+        - DEPARTED
+        - LANDED
+        - CANCELLED
+
+    FlightResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        flight_number: { type: string, example: VN257 }
+        airline_iata: { type: string, example: "VN" }
+        airline_name: { type: string, example: "Vietnam Airlines" }
+        origin_iata: { type: string, example: HAN }
+        destination_iata: { type: string, example: SGN }
+        scheduled_departure: { type: string, format: date-time }
+        estimated_departure: { type: string, format: date-time, nullable: true }
+        actual_departure: { type: string, format: date-time, nullable: true }
+        scheduled_arrival: { type: string, format: date-time }
+        estimated_arrival: { type: string, format: date-time, nullable: true }
+        actual_arrival: { type: string, format: date-time, nullable: true }
+        gate: { type: string, nullable: true, example: "12" }
+        terminal: { type: string, nullable: true, example: "T1" }
+        status: { $ref: "#/components/schemas/FlightStatus" }
+        aircraft_type: { type: string, nullable: true }
+        last_synced_at: { type: string, format: date-time }
+
+    IngestRequest:
+      type: object
+      required: [flight_number, origin_iata, destination_iata, scheduled_departure, scheduled_arrival, status, source]
+      properties:
+        flight_number: { type: string }
+        airline_iata: { type: string }
+        airline_name: { type: string }
+        origin_iata: { type: string }
+        destination_iata: { type: string }
+        scheduled_departure: { type: string, format: date-time }
+        estimated_departure: { type: string, format: date-time, nullable: true }
+        actual_departure: { type: string, format: date-time, nullable: true }
+        scheduled_arrival: { type: string, format: date-time }
+        estimated_arrival: { type: string, format: date-time, nullable: true }
+        actual_arrival: { type: string, format: date-time, nullable: true }
+        gate: { type: string, nullable: true }
+        terminal: { type: string, nullable: true }
+        status: { $ref: "#/components/schemas/FlightStatus" }
+        aircraft_type: { type: string, nullable: true }
+        source: { type: string, example: "sync-service" }
+        raw_payload:
+          type: object
+          description: original provider payload, stored for audit in flight_status_history
+
+    IngestResponse:
+      type: object
+      properties:
+        flight: { $ref: "#/components/schemas/FlightResponse" }
+        previous_status:
+          $ref: "#/components/schemas/FlightStatus"
+          nullable: true
+        changed: { type: boolean }
+
+    ErrorResponse:
+      type: object
+      properties:
+        code: { type: string, example: "FLIGHT_NOT_FOUND" }
+        message: { type: string }
+        correlation_id: { type: string }

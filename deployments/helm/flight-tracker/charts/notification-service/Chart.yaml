@@ -1,0 +1,10 @@
+apiVersion: v2
+name: notification-service
+description: Consumes flight.events from RabbitMQ and sends Telegram notifications
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+dependencies:
+  - name: common
+    version: "0.1.0"
+    repository: "file://../common"

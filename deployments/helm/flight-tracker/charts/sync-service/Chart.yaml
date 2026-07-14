@@ -1,0 +1,10 @@
+apiVersion: v2
+name: sync-service
+description: Polls the public flight API every 5 minutes and publishes flight.events
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+dependencies:
+  - name: common
+    version: "0.1.0"
+    repository: "file://../common"

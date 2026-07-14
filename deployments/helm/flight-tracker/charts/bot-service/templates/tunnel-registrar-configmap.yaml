@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Chart.Name }}-tunnel-registrar
+  labels:
+    {{- include "common.labels" . | nindent 4 }}
+data:
+  # Watches the cloudflared sidecar's log file (shared via an emptyDir, see
+  # values-local.yaml.example) for its quick-tunnel URL and re-registers the
+  # Telegram webhook whenever a new one appears — cloudflared's quick
+  # tunnels have no stable hostname, so this replaces the manual
+  # `curl .../setWebhook` step every time the tunnel container restarts.
+  register-webhook.sh: |
+    #!/bin/sh
+    set -eu
+    log="/shared/cloudflared.log"
+    last_url=""
+    echo "webhook-registrar: watching $log for a trycloudflare.com URL"
+    while true; do
+      if [ -f "$log" ]; then
+        url=$(grep -o 'https://[a-zA-Z0-9.-]*trycloudflare\.com' "$log" | tail -1 || true)
+        if [ -n "$url" ] && [ "$url" != "$last_url" ]; then
+          echo "webhook-registrar: registering webhook for $url"
+          curl -sf -F "url=${url}/webhook/telegram/${BOT_TELEGRAM_WEBHOOK_PATH_SECRET}" \
+               -F "secret_token=${BOT_TELEGRAM_WEBHOOK_SECRET}" \
+               "https://api.telegram.org/bot${BOT_TELEGRAM_BOT_TOKEN}/setWebhook" \
+            && { last_url="$url"; echo "webhook-registrar: webhook registered successfully for $url"; } \
+            || echo "webhook-registrar: setWebhook call failed (Telegram's DNS may not have resolved the new trycloudflare.com host yet), will retry on next poll"
+        fi
+      fi
+      sleep 5
+    done

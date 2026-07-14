@@ -1,0 +1,68 @@
+replicaCount: 2
+
+image:
+  registry: ghcr.io/example-org/flight-tracker
+  repository: bot-service
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: true
+  host: bot.flight-tracker.local
+  path: /webhook/telegram
+  tlsSecretName: bot-service-tls
+
+resources:
+  requests: { cpu: 100m, memory: 128Mi }
+  limits: { cpu: 500m, memory: 256Mi }
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+
+# Plain (non-secret) settings — env var names match internal/config/config.go
+# (prefix BOT_, dots -> underscores).
+env:
+  BOT_ENVIRONMENT: "local"
+  BOT_HTTP_PORT: "8080"
+  BOT_HTTP_SHUTDOWN_TIMEOUT: "15s"
+  BOT_TELEGRAM_REQUEST_TIMEOUT: "10s"
+  BOT_CLIENTS_FLIGHT_SERVICE_URL: "http://flight-service:8080"
+  BOT_CLIENTS_SUBSCRIPTION_SERVICE_URL: "http://subscription-service:8080"
+  BOT_CLIENTS_TIMEOUT: "5s"
+
+# Sensitive settings, deliberately left empty here — see common.secret's doc
+# comment. Populate via values-local.yaml (gitignored) for this test
+# deployment, or via External Secrets Operator/Sealed Secrets/SOPS in a
+# real one.
+secrets:
+  BOT_TELEGRAM_BOT_TOKEN: ""
+  BOT_TELEGRAM_WEBHOOK_SECRET: ""
+  BOT_TELEGRAM_WEBHOOK_PATH_SECRET: ""
+
+probes:
+  liveness: { path: /health, initialDelaySeconds: 5, periodSeconds: 10 }
+  readiness: { path: /ready, initialDelaySeconds: 5, periodSeconds: 10 }
+
+# Extra sidecar containers/volumes appended to the pod verbatim (see
+# common.deployment) — empty by default. Set via values-local.yaml to add
+# the cloudflared quick-tunnel + webhook-registrar sidecars for a personal
+# test deployment with no ingress controller (see
+# templates/tunnel-registrar-configmap.yaml for the registrar script and
+# values-local.yaml.example for a filled-in example).
+extraContainers: []
+extraVolumes: []
+
+networkPolicy:
+  ingressFrom:
+    - ingressControllerOnly: true
+  egressTo:
+    - flight-service
+    - subscription-service
+    - external: api.telegram.org

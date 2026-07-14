@@ -1,0 +1,37 @@
+replicaCount: 2
+
+image:
+  repository: notification-service
+
+service:
+  type: ClusterIP
+  port: 8080   # metrics/health only, no business API
+
+resources:
+  requests: { cpu: 100m, memory: 128Mi }
+  limits: { cpu: 500m, memory: 256Mi }
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+
+env:
+  DB_SCHEMA: notification
+  RABBITMQ_EXCHANGE: flight.events
+  RABBITMQ_QUEUE: notification.flight-events
+  SUBSCRIPTION_SERVICE_URL: http://subscription-service:8080
+
+probes:
+  liveness: { path: /health, initialDelaySeconds: 5, periodSeconds: 10 }
+  readiness: { path: /ready, initialDelaySeconds: 10, periodSeconds: 10 }
+
+networkPolicy:
+  ingressFrom:
+    - prometheusOnly: true
+  egressTo:
+    - rabbitmq
+    - postgresql
+    - subscription-service
+    - external: api.telegram.org

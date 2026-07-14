@@ -1,0 +1,91 @@
+# Local personal-test overlay for deploying to Docker Desktop's built-in
+# Kubernetes. Data plane (Postgres/RabbitMQ/Redis) is fully in-cluster via
+# the postgresql/redis/rabbitmq subcharts (enabled in values.yaml) — no
+# external dependency needed.
+#
+# Copy this file to values-local.yaml (gitignored — never commit real
+# secrets) and fill in the real Telegram credentials, then deploy with
+# deploy-local.sh (which also seeds the DB schemas via --set-file):
+#   ./deploy-local.sh
+
+# Images already built locally via each service's `make docker-build`
+# (flight-tracker/<service>:local) — no registry push needed.
+_localImage: &localImage
+  registry: flight-tracker
+  tag: local
+  pullPolicy: Never
+
+postgresql:
+  auth:
+    postgresPassword: "<pick a password>"
+
+rabbitmq:
+  auth:
+    password: "<pick a password>"
+
+bot-service:
+  image:
+    <<: *localImage
+    repository: bot-service
+  replicaCount: 1
+  autoscaling:
+    enabled: false
+  ingress:
+    # No ingress controller installed on Docker Desktop's Kubernetes for
+    # this quick test — use the cloudflared sidecar below instead.
+    enabled: false
+  secrets:
+    BOT_TELEGRAM_BOT_TOKEN: "<real bot token from @BotFather>"
+    BOT_TELEGRAM_WEBHOOK_SECRET: "<random secret>"
+    BOT_TELEGRAM_WEBHOOK_PATH_SECRET: "<random secret>"
+  # cloudflared quick tunnel + auto webhook registration — see
+  # templates/tunnel-registrar-configmap.yaml. Takes ~5-10 min after each
+  # pod (re)start to converge: Telegram's own DNS resolver is slow to pick
+  # up a freshly-minted trycloudflare.com hostname, so setWebhook fails
+  # (logged) until it does; the registrar retries every 5s until it
+  # succeeds (logged) — no manual intervention needed, just patience.
+  # Remove this whole block (leave extraContainers/extraVolumes at their
+  # `[]` defaults) if you have a real ingress controller + domain instead.
+  extraVolumes:
+    - name: tunnel-log
+      emptyDir: {}
+    - name: registrar-script
+      configMap:
+        name: bot-service-tunnel-registrar
+        defaultMode: 0755
+  extraContainers:
+    - name: cloudflared
+      image: cloudflare/cloudflared:latest
+      args: ["tunnel", "--url", "http://localhost:8080", "--logfile", "/shared/cloudflared.log", "--loglevel", "info"]
+      volumeMounts:
+        - name: tunnel-log
+          mountPath: /shared
+    - name: webhook-registrar
+      image: curlimages/curl:8.11.0
+      command: ["sh", "/scripts/register-webhook.sh"]
+      volumeMounts:
+        - name: tunnel-log
+          mountPath: /shared
+        - name: registrar-script
+          mountPath: /scripts
+      envFrom:
+        - secretRef:
+            name: bot-service
+
+flight-service:
+  image:
+    <<: *localImage
+    repository: flight-service
+  replicaCount: 1
+  autoscaling:
+    enabled: false
+  secrets:
+    FLIGHT_DB_PASSWORD: "<same password as postgresql.auth.postgresPassword>"
+
+sync-service:
+  image:
+    <<: *localImage
+    repository: sync-service
+  secrets:
+    SYNC_DB_PASSWORD: "<same password as postgresql.auth.postgresPassword>"
+    SYNC_RABBITMQ_URL: "amqp://guest:<same password as rabbitmq.auth.password>@rabbitmq:5672/"
