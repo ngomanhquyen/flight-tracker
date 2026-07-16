@@ -23,3 +23,8 @@ deployments/helm/flight-tracker/Chart.lock
 
 # Go
 go.work.sum
+
+# CKAD labs: scripts/solve.sh writes YAML manifests here at run time —
+# scratch output, not lab source (the same content is embedded in
+# scripts/solve.sh itself).
+ckad-labs/**/manifests/

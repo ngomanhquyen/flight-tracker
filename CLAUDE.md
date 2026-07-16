@@ -2,6 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## `ckad-labs/`
+
+Unrelated to the Flight Tracker app: a self-study lab series for the CKAD
+certification, organized by exam domain (`ckad-labs/01-application-design-and-build/`,
+more domains added as requested). Each lab has a `README.md` (tasks) and a
+`solution.md` (answers + explanation) — don't conflate this with the
+services under `services/` when reasoning about the app's architecture.
+
 ## What this is
 
 Flight Tracker Bot — a Telegram bot (no web frontend) that lets users search
