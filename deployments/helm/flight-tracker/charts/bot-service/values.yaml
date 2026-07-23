@@ -50,6 +50,18 @@ probes:
   liveness: { path: /health, initialDelaySeconds: 5, periodSeconds: 10 }
   readiness: { path: /ready, initialDelaySeconds: 5, periodSeconds: 10 }
 
+# bot-service doesn't talk to Postgres directly (it only calls flight-service/
+# subscription-service over REST — see docs/architecture.md), so no
+# wait-for-db initContainer here.
+dbCheck:
+  enabled: false
+
+# Adds a log-shipper sidecar (see common.logShipperContainer) that tails this
+# pod's log file and appends it into the cluster-wide central-logs PVC.
+logShipping:
+  enabled: true
+  centralLogsPVCName: flight-tracker-central-logs
+
 # Extra sidecar containers/volumes appended to the pod verbatim (see
 # common.deployment) — empty by default. Set via values-local.yaml to add
 # the cloudflared quick-tunnel + webhook-registrar sidecars for a personal

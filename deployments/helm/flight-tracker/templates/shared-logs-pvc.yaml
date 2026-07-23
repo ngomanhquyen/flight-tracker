@@ -1,0 +1,26 @@
+{{/*
+Single PVC shared by every service's log-shipper sidecar (see
+common.logShipperContainer in charts/common) so all services' logs land in
+one place, mountable/browsable from outside the cluster. ReadWriteOnce is
+enough today: deploy-local.sh targets Docker Desktop's single-node
+Kubernetes, and RWO only restricts a volume to one *node*, not one pod — all
+pods land on that same node regardless of replica count. A multi-node
+cluster would need to swap storageClassName to an RWX-capable class.
+*/}}
+{{- if .Values.centralLogging.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: flight-tracker-central-logs
+  labels:
+    app.kubernetes.io/part-of: flight-tracker
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.centralLogging.size }}
+  {{- if .Values.centralLogging.storageClassName }}
+  storageClassName: {{ .Values.centralLogging.storageClassName }}
+  {{- end }}
+{{- end }}

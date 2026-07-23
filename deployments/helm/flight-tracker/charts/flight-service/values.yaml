@@ -48,6 +48,20 @@ probes:
   liveness: { path: /health, initialDelaySeconds: 5, periodSeconds: 10 }
   readiness: { path: /ready, initialDelaySeconds: 10, periodSeconds: 10 }
 
+# Blocks the main container from starting until Postgres accepts TCP
+# connections (host/port match FLIGHT_DB_HOST/FLIGHT_DB_PORT above) — see
+# common.initContainers.
+dbCheck:
+  enabled: true
+  host: "postgresql"
+  port: "5432"
+
+# Adds a log-shipper sidecar (see common.logShipperContainer) that tails this
+# pod's log file and appends it into the cluster-wide central-logs PVC.
+logShipping:
+  enabled: true
+  centralLogsPVCName: flight-tracker-central-logs
+
 networkPolicy:
   ingressFrom:
     - bot-service

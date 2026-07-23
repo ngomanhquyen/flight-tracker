@@ -68,6 +68,15 @@ rabbitmq:
   image:
     repository: bitnamilegacy/rabbitmq
 
+# Single PVC shared by every service's log-shipper sidecar — see
+# templates/shared-logs-pvc.yaml and charts/common/templates/_helpers.tpl
+# (common.logShipperContainer). storageClassName empty = cluster default
+# (Docker Desktop's hostpath provisioner for deploy-local.sh).
+centralLogging:
+  enabled: true
+  size: 1Gi
+  storageClassName: ""
+
 # Per-service overrides are set under each subchart's own key, e.g.:
 # bot-service:
 #   replicaCount: 2

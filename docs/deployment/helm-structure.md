@@ -60,14 +60,54 @@ resolution.
 | notification-service | ✅ | | ✅ (ClusterIP, metrics only) | — | ✅ | ✅ (DB creds, bot token) | ✅ | ✅ (ingress from RabbitMQ mgmt only for health; egress to subscription-service, RabbitMQ, Telegram API, Postgres) | — |
 | sync-service | | ✅ (`schedule: "*/5 * * * *"`) | ✅ (ClusterIP, metrics only, for scrape between runs) | — | ✅ | ✅ (DB creds, public flight API key) | — (batch job, HPA N/A) | ✅ (egress to flight-service, RabbitMQ, Postgres, public API; no ingress needed) | — |
 
-`PVC`: none of our own services are stateful — PostgreSQL, Redis, and
-RabbitMQ are declared as chart **dependencies** (Bitnami `postgresql`,
-`redis`, `rabbitmq` charts) for local/dev/staging convenience; their PVCs are
-managed by those subcharts. Production is expected to point at managed
-services (RDS/CloudSQL for Postgres, ElastiCache/Memorystore for Redis, or a
-managed RabbitMQ/Amazon MQ) via `values-prod.yaml` overriding
-`postgresql.enabled: false` + external connection secrets, so no PVC
-ownership exists in our own templates.
+`PVC` (per-service column above): none of our own services are individually
+stateful — PostgreSQL, Redis, and RabbitMQ are declared as chart
+**dependencies** (Bitnami `postgresql`, `redis`, `rabbitmq` charts) for
+local/dev/staging convenience; their PVCs are managed by those subcharts.
+Production is expected to point at managed services (RDS/CloudSQL for
+Postgres, ElastiCache/Memorystore for Redis, or a managed RabbitMQ/Amazon MQ)
+via `values-prod.yaml` overriding `postgresql.enabled: false` + external
+connection secrets, so no per-service PVC ownership exists in our own
+templates. There is, however, one PVC owned by the umbrella chart itself —
+see "Dependency wait + centralized logging" below.
+
+## Dependency wait + centralized logging
+
+Every service that renders a `Deployment`/`CronJob` via `common.deployment` /
+`common.cronjob` (bot-service, flight-service, sync-service today) picks up
+two more building blocks from the `common` library chart, each gated by a
+values flag every such subchart must declare explicitly (no implicit
+defaults, to avoid nil-map surprises when a subchart is templated in
+isolation):
+
+- **`dbCheck`** (`common.initContainers`) — when `dbCheck.enabled: true`, a
+  `wait-for-db` initContainer (`busybox:1.36`, `nc -z` in a retry loop
+  against `dbCheck.host`/`dbCheck.port`) blocks the main container from
+  starting until the dependency accepts TCP connections. It's a generic TCP
+  check, not Postgres-specific, so the same snippet works for any
+  host:port dependency. Only `flight-service` and `sync-service` set
+  `enabled: true` — they're the only implemented services with a real
+  Postgres connection; `bot-service` is stateless (talks to other services
+  over REST) and explicitly sets `enabled: false`.
+- **`logShipping`** (`common.logShipperContainer`) — when
+  `logShipping.enabled: true`, the pod gets: an `app-log` `emptyDir` volume
+  mounted into the main container at `/var/log/app`; a `LOG_FILE_PATH` env
+  var pointing `pkg/logger` at `/var/log/app/<chart-name>.log` (in addition
+  to its usual stderr output — see `pkg/logger/logger.go`); and a
+  `log-shipper` sidecar (`busybox:1.36` `tail -F`) that appends that file
+  into `/central-logs/<chart-name>.log` on the shared
+  `flight-tracker-central-logs` PVC (rendered once, at the umbrella level,
+  by `templates/shared-logs-pvc.yaml`, gated by the root `values.yaml`'s
+  `centralLogging.enabled`). All three implemented services set
+  `logShipping.enabled: true`, so every service's log file ends up
+  side-by-side on that one PVC — mount it from any pod (or a throwaway
+  debug pod) to `tail`/`grep` across every service's logs in one place.
+
+The shared PVC defaults to `ReadWriteOnce` — fine for `deploy-local.sh`'s
+single-node Docker Desktop cluster, since RWO restricts a volume to one
+*node*, not one pod, and every pod lands on that same node regardless of
+replica count. A multi-node cluster would need `centralLogging.storageClassName`
+pointed at an RWX-capable class instead.
 
 ## Values override strategy
 

@@ -4,6 +4,7 @@ package logger
 
 import (
 	"context"
+	"os"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -15,7 +16,9 @@ const correlationIDKey ctxKey = "correlation_id"
 
 // New builds a Zap logger. In "local" environment it uses a human-readable
 // console encoder; everywhere else it emits JSON, suitable for log
-// aggregators.
+// aggregators. If LOG_FILE_PATH is set, logs are additionally written there
+// (kept alongside stderr, not instead of it) so a log-shipping sidecar can
+// tail a file on a volume shared with this container.
 func New(environment, service string) (*zap.Logger, error) {
 	var cfg zap.Config
 	if environment == "local" {
@@ -25,6 +28,10 @@ func New(environment, service string) (*zap.Logger, error) {
 		cfg = zap.NewProductionConfig()
 		cfg.EncoderConfig.TimeKey = "timestamp"
 		cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	}
+
+	if path := os.Getenv("LOG_FILE_PATH"); path != "" {
+		cfg.OutputPaths = append(cfg.OutputPaths, path)
 	}
 
 	base, err := cfg.Build()

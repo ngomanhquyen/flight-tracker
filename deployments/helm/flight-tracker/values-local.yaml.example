@@ -57,12 +57,16 @@ bot-service:
     - name: cloudflared
       image: cloudflare/cloudflared:latest
       args: ["tunnel", "--url", "http://localhost:8080", "--logfile", "/shared/cloudflared.log", "--loglevel", "info"]
+      resources:
+        requests: { cpu: 100m, memory: 100Mi }
       volumeMounts:
         - name: tunnel-log
           mountPath: /shared
     - name: webhook-registrar
       image: curlimages/curl:8.11.0
       command: ["sh", "/scripts/register-webhook.sh"]
+      resources:
+        requests: { cpu: 100m, memory: 100Mi }
       volumeMounts:
         - name: tunnel-log
           mountPath: /shared

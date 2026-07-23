@@ -232,6 +232,68 @@ spec:
 {{- end }}
 {{- end -}}
 
+{{/*
+initContainers: a wait-for-db check and/or a log-shipping sidecar, both
+gated per-subchart (dbCheck.enabled / logShipping.enabled — every subchart
+using common.deployment/common.cronjob must declare both blocks, false is
+fine, so this never hits a missing key).
+
+The log-shipper is deliberately a *native* sidecar (restartPolicy: Always on
+an initContainer, GA since k8s 1.29) rather than a regular container: it
+tails this pod's log file (written by the main container to the shared
+app-log emptyDir when LOG_FILE_PATH is set — see pkg/logger) and appends it
+into a service-named file on the centrally-mounted PVC. `tail -F` never
+exits on its own — as a regular sidecar in `containers:` that would block a
+Job/CronJob pod from ever reaching Completed (restartPolicy: Never requires
+ALL containers to exit), starving every later run once concurrencyPolicy:
+Forbid kicks in. A native sidecar avoids this: the kubelet sends it SIGTERM
+automatically once the pod's regular containers have all finished, letting
+the Job complete normally. This matters for sync-service's CronJob; it's
+harmless overhead for bot-service/flight-service's long-running Deployments.
+*/}}
+{{- define "common.initContainers" -}}
+{{- if or .Values.dbCheck.enabled .Values.logShipping.enabled }}
+initContainers:
+  {{- if .Values.dbCheck.enabled }}
+  - name: wait-for-db
+    image: busybox:1.36
+    command:
+      - sh
+      - -c
+      - |
+        until nc -z -w2 {{ .Values.dbCheck.host }} {{ .Values.dbCheck.port }}; do
+          echo "waiting for db at {{ .Values.dbCheck.host }}:{{ .Values.dbCheck.port }}..."
+          sleep 2
+        done
+    resources:
+      requests: { cpu: 100m, memory: 100Mi }
+  {{- end }}
+  {{- if .Values.logShipping.enabled }}
+  - name: log-shipper
+    image: busybox:1.36
+    restartPolicy: Always
+    command:
+      - sh
+      - -c
+      - |
+        trap 'kill $TAIL_PID 2>/dev/null; exit 0' TERM
+        touch /central-logs/{{ .Chart.Name }}.log
+        tail -F /var/log/app/{{ .Chart.Name }}.log >> /central-logs/{{ .Chart.Name }}.log &
+        TAIL_PID=$!
+        wait $TAIL_PID
+    volumeMounts:
+      - name: app-log
+        mountPath: /var/log/app
+        readOnly: true
+      - name: central-logs
+        mountPath: /central-logs
+    resources:
+      requests: { cpu: 10m, memory: 16Mi }
+      limits: { cpu: 50m, memory: 32Mi }
+  {{- end }}
+{{- end }}
+{{- end -}}
+
 {{/* Deployment: standard shape used by bot-service and flight-service. */}}
 {{- define "common.deployment" -}}
 apiVersion: apps/v1
@@ -256,7 +318,11 @@ spec:
     metadata:
       labels:
         {{- include "common.selectorLabels" . | nindent 8 }}
+      annotations:
+        owner: vht
+        purpose: ckad-lab
     spec:
+      {{- include "common.initContainers" . | nindent 6 }}
       containers:
         - name: {{ .Chart.Name }}
           image: {{ include "common.image" . }}
@@ -270,15 +336,34 @@ spec:
             - secretRef:
                 name: {{ .Chart.Name }}
                 optional: true
+          {{- if .Values.logShipping.enabled }}
+          env:
+            - name: LOG_FILE_PATH
+              value: /var/log/app/{{ .Chart.Name }}.log
+          {{- end }}
           {{- include "common.probes" . | nindent 10 }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          {{- if .Values.logShipping.enabled }}
+          volumeMounts:
+            - name: app-log
+              mountPath: /var/log/app
+          {{- end }}
         {{- with .Values.extraContainers }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-      {{- with .Values.extraVolumes }}
+      {{- if or .Values.extraVolumes .Values.logShipping.enabled }}
       volumes:
+        {{- if .Values.logShipping.enabled }}
+        - name: app-log
+          emptyDir: {}
+        - name: central-logs
+          persistentVolumeClaim:
+            claimName: {{ .Values.logShipping.centralLogsPVCName }}
+        {{- end }}
+        {{- with .Values.extraVolumes }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- end }}
 {{- end -}}
 
@@ -305,6 +390,7 @@ spec:
             {{- include "common.selectorLabels" . | nindent 12 }}
         spec:
           restartPolicy: Never
+          {{- include "common.initContainers" . | nindent 10 }}
           containers:
             - name: {{ .Chart.Name }}
               image: {{ include "common.image" . }}
@@ -318,6 +404,24 @@ spec:
                 - secretRef:
                     name: {{ .Chart.Name }}
                     optional: true
+              {{- if .Values.logShipping.enabled }}
+              env:
+                - name: LOG_FILE_PATH
+                  value: /var/log/app/{{ .Chart.Name }}.log
+              {{- end }}
               resources:
                 {{- toYaml .Values.resources | nindent 16 }}
+              {{- if .Values.logShipping.enabled }}
+              volumeMounts:
+                - name: app-log
+                  mountPath: /var/log/app
+              {{- end }}
+          {{- if .Values.logShipping.enabled }}
+          volumes:
+            - name: app-log
+              emptyDir: {}
+            - name: central-logs
+              persistentVolumeClaim:
+                claimName: {{ .Values.logShipping.centralLogsPVCName }}
+          {{- end }}
 {{- end -}}
