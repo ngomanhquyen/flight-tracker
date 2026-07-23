@@ -64,7 +64,9 @@ hoặc gõ hai dấu `/` ở đầu (`//bin/sh`).
 | Domain | Thư mục | Trạng thái |
 |---|---|---|
 | Application Design and Build (20%) | [01-application-design-and-build/](01-application-design-and-build/) | 4 lab |
+| Application Deployment (20%) | [02-application-deployment/](02-application-deployment/) | 3/4 lab (thiếu 2.4 — Kustomize Overlay) |
+| Application Environment, Configuration and Security (25%) | [03-application-environment-configuration-security/](03-application-environment-configuration-security/) | 4 lab (mới có README, chưa có solution.md) |
 
-Các domain khác (Configuration, Multi-Container Pods nâng cao, Observability,
-Pod Design, Services & Networking, State Persistence) sẽ được thêm khi có
-yêu cầu bài lab tương ứng.
+Các domain khác (Multi-Container Pods nâng cao, Observability, Pod Design,
+Services & Networking, State Persistence) sẽ được thêm khi có yêu cầu bài
+lab tương ứng.
